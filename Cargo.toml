@@ -1,0 +1,8 @@
+[workspace]
+members = [
+  "webmention",
+  "cli"
+]
+
+[patch.crates-io]
+webmention = { path = "webmention" }
