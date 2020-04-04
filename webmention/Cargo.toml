@@ -1,0 +1,37 @@
+[package]
+name = "webmention"
+version = "0.1.0"
+authors = ["Nicholas Young <hi@secretfader.com>"]
+edition = "2018"
+description = "Send and receive Webmentions, an open notification standard from the IndieWeb ecosystem."
+readme = "../README.md"
+
+[dependencies]
+thiserror = "1.0.14"
+url = "2.1.1"
+chrono = "0.4.11"
+html5ever = { version = "0.25.1", optional = true }
+serde_json = { version = "1.0.51", optional = true }
+http = "0.2.1"
+scraper = "0.11.0"
+
+[dependencies.reqwest]
+version = "0.10.4"
+optional = true
+default-features = false
+
+[dependencies.serde]
+version = "1.0.106"
+optional = true
+default-features = false
+
+[features]
+client = [
+  "serde",
+  "serde_json",
+  "reqwest/json",
+  "url/serde",
+  "chrono/serde",
+  "html5ever",
+]
+default = []

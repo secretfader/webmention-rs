@@ -5,7 +5,7 @@ part of the [IndieWeb][indieweb] ecosystem.
 
 ## Usage
 
-`cargo install --git https://github.com/secretfader/webmention-rs`
+`cargo install webmention-cli --git https://github.com/secretfader/webmention-rs`
 
 ## License
 

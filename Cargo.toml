@@ -6,3 +6,4 @@ members = [
 
 [patch.crates-io]
 webmention = { path = "webmention" }
+scraper = { git = "https://github.com/causal-agent/scraper", branch = "master" }
