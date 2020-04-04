@@ -1,8 +1,13 @@
 [workspace]
 members = [
   "webmention",
-  "cli"
+  "cli",
+  "tests",
 ]
 
 [patch.crates-io]
 webmention = { path = "webmention" }
+scraper = { git = "https://github.com/causal-agent/scraper", branch = "master" }
+reqwest = { git = "https://github.com/seanmonstar/reqwest" }
+# Ref: https://github.com/servo/rust-url/commit/2831475
+url = { git = "https://github.com/servo/rust-url", branch = "master" }
