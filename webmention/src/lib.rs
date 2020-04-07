@@ -14,6 +14,10 @@
 //! given URL for mentioned URLs, perform endpoint
 //! discovery and send Webmentions to a list of URLs.
 
+//#![deny(missing_docs, missing_debug_implementations)]
+//#![cfg_attr(test, deny(rust_2018_idioms))]
+//#![cfg_attr(test, deny(warnings))]
+
 #[cfg(feature = "client")]
 mod client;
 mod result;

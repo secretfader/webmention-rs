@@ -13,6 +13,7 @@ use url::Url;
 
 /// Download markup from a requested URL and scan for Webmention
 /// endpoints
-pub async fn query(_url: Url) -> Result<()> {
+pub async fn query(url: Url) -> Result<()> {
+    let req = reqwest::get(url).await?.text().await?;
     Ok(())
 }

@@ -28,6 +28,7 @@ use http::Uri;
 ///     Ok(())
 /// # }
 /// ```
+#[derive(Debug)]
 pub struct Client {
     source: Uri,
     targets: Option<Vec<Uri>>,
@@ -90,6 +91,7 @@ enum Mode {
 }
 
 /// Builder to ease creating new Webmention Clients
+#[derive(Debug)]
 pub struct Builder {
     inner: Result<Client>,
 }

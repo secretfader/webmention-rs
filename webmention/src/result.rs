@@ -14,12 +14,25 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[cfg(feature = "client")]
     #[error("Invalid URI {0}")]
+    /// URL provided was invalid
     InvalidUri(http::uri::InvalidUri),
+
+    #[cfg(feature = "client")]
+    #[error("HTTP Request {0}")]
+    /// Problem occurred during execution of an HTTP request
+    Request(reqwest::Error),
 }
 
 #[cfg(feature = "client")]
 impl std::convert::From<http::uri::InvalidUri> for Error {
     fn from(e: http::uri::InvalidUri) -> Self {
         Error::InvalidUri(e)
+    }
+}
+
+#[cfg(feature = "client")]
+impl std::convert::From<reqwest::Error> for Error {
+    fn from(e: reqwest::Error) -> Self {
+        Error::Request(e)
     }
 }
