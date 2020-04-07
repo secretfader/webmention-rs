@@ -2,14 +2,19 @@
 //
 // Use of this source code file is governed by the Mozilla
 // Public License, version 2.0, which can be found in the
-// LICENSE file or at https://www.mozilla.org/en-US/MPL/2.0/.A
+// LICENSE file or at https://www.mozilla.org/en-US/MPL/2.0/.
+
+//! This module provides the utilities necessary to send
+//! Webmentions, via reqwest, an asynchronous HTTP client
+
+mod scraper;
 
 use crate::result::Result;
+use std::convert::{TryFrom, Into};
 use http::Uri;
-use std::convert::{Into, TryFrom};
 
 /// Asynchronous implementation of a Webmention client with
-/// an easy-to-use builder.
+/// an easy-to-use builder
 ///
 /// ## Example
 /// ```rust
