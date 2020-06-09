@@ -8,7 +8,7 @@ use std::convert::From;
 
 /// Convenience alias `std::result::Result` for operations that may
 /// fail within the Webmention crate
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Convenience type for errors that may be produced from within the Webmention
 /// crate

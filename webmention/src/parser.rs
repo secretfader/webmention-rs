@@ -18,7 +18,6 @@
 //!   successfully from provided components it will be discarded.
 
 use crate::result::{ParseError, Result};
-use core::str::FromStr;
 use http::Uri;
 use regex::Regex;
 use scraper::{Html, Selector};
@@ -30,15 +29,19 @@ use url::Url;
 pub async fn parse<T: Parsable>(payload: T) -> ParserResponse {
     let (url, (headers, body)) = payload.into_parser_parts().await?;
 
-    if let Some(kind) = parse_link_headers(headers)? {
-        let parsed = into_url(kind, &url)?;
-        log::debug!("Returning parsed URL: {}", &parsed);
+    if let Some(found) = parse_link_headers(headers)? {
+        let parsed = Refkind::from_parts(&url, &found)
+            .map_err(|_| ParseError::InvalidValue)?
+            .into_response()?;
+
         return Ok(Some(parsed));
     }
 
-    if let Some(kind) = parse_link_tags(&body)? {
-        let parsed = into_url(kind, &url)?;
-        log::debug!("Returning parsed URL: {}", &parsed);
+    if let Some(found) = parse_link_tags(&body)? {
+        let parsed = Refkind::from_parts(&url, &found)
+            .map_err(|_| ParseError::InvalidValue)?
+            .into_response()?;
+
         return Ok(Some(parsed));
     };
 
@@ -60,7 +63,7 @@ pub trait Parsable {
 
 // Evaluate HTTP `Link` headers for Webmention support and return the first
 // detected endpoint.
-fn parse_link_headers(value: Vec<String>) -> Result<Option<Refkind>> {
+fn parse_link_headers<'a>(value: Vec<String>) -> Result<Option<&'a str>> {
     let mut res: Option<String> = None;
 
     for v in value {
@@ -70,9 +73,7 @@ fn parse_link_headers(value: Vec<String>) -> Result<Option<Refkind>> {
     }
 
     if let Some(res) = res {
-        log::debug!("Found {:?} in link header, attempting to parse", &res);
-        let parsed = Refkind::from_str(&res).map_err(|_| ParseError::InvalidHeader)?;
-        return Ok(Some(parsed))
+        return Ok(Some(res));
     }
 
     Ok(None)
@@ -88,6 +89,7 @@ fn parse_link_header(v: String) -> Result<Option<String>> {
     let links = re.split(',');
 
     for link in links {
+        // Exit the loop if a valid tag has already been found
         if res.is_some() {
             break;
         }
@@ -122,14 +124,13 @@ fn parse_link_header(v: String) -> Result<Option<String>> {
 
 // Evaluate HTML source for Webmention support and return the first detected
 // endpoint.
-fn parse_link_tags(value: &str) -> Result<Option<Refkind>> {
+fn parse_link_tags(value: &str) -> Result<Option<&str>> {
     let tree = Html::parse_document(value);
     let iselect = Selector::parse(r#"[rel*=webmention]"#).unwrap();
     let mut res: Option<&str> = None;
 
     for el in tree.select(&iselect) {
-        // Exit the loop if a valid tag (matching `href` and `rel` values) has
-        // already been found
+        // Exit the loop if a valid tag has already been found
         if res.is_some() {
             break;
         }
@@ -137,74 +138,29 @@ fn parse_link_tags(value: &str) -> Result<Option<Refkind>> {
         match (el.value().attr("rel"), el.value().attr("href")) {
             (Some("webmention"), Some(v)) => {
                 res = Some(v);
-            },
+            }
             _ => {}
         };
     }
 
     if let Some(res) = res {
-        log::debug!("Found {:?} in link tag, attempting to parse", &res);
-        let parsed = Refkind::from_str(res).map_err(|_| ParseError::InvalidHeader)?;
-        return Ok(Some(parsed))
+        return Ok(Some(res));
     }
 
     Ok(None)
-}
-
-// Construct a valid URL by any means necessary, returning an error only if all
-// attempts failed
-fn into_url(href: Refkind, url: &Url) -> Result<Url> {
-    // Return the URL if it successfully parsed as absolute
-    let val = match href {
-        Refkind::Abs(u) => return Ok(u),
-        Refkind::Rel(u) => u,
-    };
-
-    // Attempt to build a URL out of the fewest valid components
-    if let Some(v) = match (val.scheme(), val.authority(), val.path_and_query()) {
-        (Some(s), Some(a), None) => Some(format!("{}://{}", s, a)),
-        (Some(s), Some(a), Some(p)) => Some(format!("{}://{}{}", s, a, p)),
-        _ => None,
-    } {
-        log::debug!("Attempting to construct URL from: {}", &v);
-        return Ok(Url::parse(&v)?);
-    }
-
-    // Next idea: how about the existing path and query joined with a base URL?
-    if let Some(v) = match val.path_and_query() {
-        Some(path) => match url.origin() {
-            url::Origin::Tuple(s, h, p) => match p {
-                80 | 443 => Some(format!("{}://{}{}", s, h, path)),
-                _ => Some(format!("{}://{}:{}{}", s, h, p, path)),
-            },
-            _ => None,
-        },
-        _ => None,
-    } {
-        log::debug!("Attempting to construct URL from: {}", &v);
-        return Ok(Url::parse(&v)?);
-    }
-
-    Err(ParseError::InvalidHeader)?
 }
 
 #[derive(Debug)]
 enum Refkind {
     Abs(Url),
     Rel(Uri),
+    Unknown((Url, &'static str)),
 }
 
-#[derive(Debug)]
-enum ParseRefError {
-    InvalidInput,
-}
-
-impl FromStr for Refkind {
-    type Err = ParseRefError;
-
-    fn from_str(v: &str) -> std::result::Result<Self, Self::Err> {
+impl Refkind {
+    fn from_parts(src: &Url, v: &str) -> Result<Self, ParseRefError> {
         if v.is_empty() {
-            return Err(ParseRefError::InvalidInput)
+            return Err(ParseRefError::InvalidInput);
         }
 
         if let Ok(url) = Url::try_from(v) {
@@ -215,12 +171,48 @@ impl FromStr for Refkind {
             return Ok(Self::Rel(uri));
         }
 
-        if let Ok(uri) = Uri::try_from(format!("/{}", v)) {
-            return Ok(Self::Rel(uri))
+        Ok(Self::Unknown((src, v)))
+    }
+
+    fn into_response(&self) -> Result<ParserResponse> {
+        let val = match &self {
+            Self::Abs(u) => return Ok(u),
+            Self::Rel(u) => Some(u),
+            Self::Unknown((src, val)) => Some((src, val)),
+        };
+
+        // Attempt to build a URL out of the fewest valid components
+        if let Some(v) = match (val.scheme(), val.authority(), val.path_and_query()) {
+            (Some(s), Some(a), None) => Some(format!("{}://{}", s, a)),
+            (Some(s), Some(a), Some(p)) => Some(format!("{}://{}{}", s, a, p)),
+            _ => None,
+        } {
+            log::debug!("Attempting to construct URL from: {}", &v);
+            return Ok(Url::parse(&v)?);
         }
 
-        Err(ParseRefError::InvalidInput)
+        // Next idea: how about the existing path and query joined with a base URL?
+        if let Some(v) = match val.path_and_query() {
+            Some(path) => match src.origin() {
+                url::Origin::Tuple(s, h, p) => match p {
+                    80 | 443 => Some(format!("{}://{}{}", s, h, path)),
+                    _ => Some(format!("{}://{}:{}{}", s, h, p, path)),
+                },
+                _ => None,
+            },
+            _ => None,
+        } {
+            log::debug!("Attempting to construct URL from: {}", &v);
+            return Ok(Url::parse(&v)?);
+        }
+
+        Err(ParseError::InvalidHeader)?
     }
+}
+
+#[derive(Debug)]
+enum ParseRefError {
+    InvalidInput,
 }
 
 #[cfg(test)]
