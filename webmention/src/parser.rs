@@ -30,19 +30,15 @@ pub async fn parse<T: Parsable>(payload: T) -> ParserResponse {
     let (url, (headers, body)) = payload.into_parser_parts().await?;
 
     if let Some(found) = parse_link_headers(headers)? {
-        let parsed = Refkind::from_parts(&url, &found)
+        return Refkind::from_parts(url.clone(), &found)
             .map_err(|_| ParseError::InvalidValue)?
-            .into_response()?;
-
-        return Ok(Some(parsed));
+            .into_response();
     }
 
-    if let Some(found) = parse_link_tags(&body)? {
-        let parsed = Refkind::from_parts(&url, &found)
+    if let Some(found) = parse_link_tags(body)? {
+        return Refkind::from_parts(url.clone(), &found)
             .map_err(|_| ParseError::InvalidValue)?
-            .into_response()?;
-
-        return Ok(Some(parsed));
+            .into_response();
     };
 
     Ok(None)
@@ -54,7 +50,7 @@ pub async fn parse<T: Parsable>(payload: T) -> ParserResponse {
 pub type ParserResponse = Result<Option<Url>>;
 
 /// Trait implemented by types that wish to be handled by the Webmention parser.
-#[async_trait::async_trait]
+#[crate::async_trait]
 pub trait Parsable {
     /// Extract the base URL, plus a tuple of HTTP `Link` headers and the body
     /// payload.
@@ -63,7 +59,7 @@ pub trait Parsable {
 
 // Evaluate HTTP `Link` headers for Webmention support and return the first
 // detected endpoint.
-fn parse_link_headers<'a>(value: Vec<String>) -> Result<Option<&'a str>> {
+fn parse_link_headers(value: Vec<String>) -> Result<Option<String>> {
     let mut res: Option<String> = None;
 
     for v in value {
@@ -124,8 +120,8 @@ fn parse_link_header(v: String) -> Result<Option<String>> {
 
 // Evaluate HTML source for Webmention support and return the first detected
 // endpoint.
-fn parse_link_tags(value: &str) -> Result<Option<&str>> {
-    let tree = Html::parse_document(value);
+fn parse_link_tags(value: String) -> Result<Option<&'static str>> {
+    let tree = Html::parse_document(&value);
     let iselect = Selector::parse(r#"[rel*=webmention]"#).unwrap();
     let mut res: Option<&str> = None;
 
@@ -158,7 +154,9 @@ enum Refkind {
 }
 
 impl Refkind {
-    fn from_parts(src: &Url, v: &str) -> Result<Self, ParseRefError> {
+    /// Attempt to construct an instance of `RefKind` from a base URL and
+    /// trailing components.
+    fn from_parts(src: Url, v: &'static str) -> Result<Self, ParseRefError> {
         if v.is_empty() {
             return Err(ParseRefError::InvalidInput);
         }
@@ -174,9 +172,10 @@ impl Refkind {
         Ok(Self::Unknown((src, v)))
     }
 
-    fn into_response(&self) -> Result<ParserResponse> {
+    // Attempt to convert an instance of `RefKind` to `ParserResponse`.
+    fn into_response(&self) -> ParserResponse {
         let val = match &self {
-            Self::Abs(u) => return Ok(u),
+            Self::Abs(u) => return Ok(Some(u.clone())),
             Self::Rel(u) => Some(u),
             Self::Unknown((src, val)) => Some((src, val)),
         };
@@ -188,12 +187,12 @@ impl Refkind {
             _ => None,
         } {
             log::debug!("Attempting to construct URL from: {}", &v);
-            return Ok(Url::parse(&v)?);
+            return Ok(Some(Url::parse(&v)?));
         }
 
         // Next idea: how about the existing path and query joined with a base URL?
         if let Some(v) = match val.path_and_query() {
-            Some(path) => match src.origin() {
+            Some(path) => match val.origin() {
                 url::Origin::Tuple(s, h, p) => match p {
                     80 | 443 => Some(format!("{}://{}{}", s, h, path)),
                     _ => Some(format!("{}://{}:{}{}", s, h, p, path)),
@@ -203,7 +202,7 @@ impl Refkind {
             _ => None,
         } {
             log::debug!("Attempting to construct URL from: {}", &v);
-            return Ok(Url::parse(&v)?);
+            return Ok(Some(Url::parse(&v)?));
         }
 
         Err(ParseError::InvalidHeader)?

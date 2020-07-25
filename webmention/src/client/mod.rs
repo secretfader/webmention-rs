@@ -16,7 +16,8 @@ use url::Url;
 mod builder;
 mod source;
 
-/// Asynchronous implementation of a Webmention client with a simple Builder API.
+/// Asynchronous implementation of a Webmention client with a simple
+/// Builder API.
 ///
 /// ## Example
 ///
@@ -43,7 +44,8 @@ impl Client {
         builder::Builder::new()
     }
 
-    /// Create a new instance of the Webmention Client (with the Source URL
+    /// Create a new instance of the Webmention Client (with the
+    /// Source URL)
     /// preconfigured).
     pub fn source<T>(source: T) -> builder::Builder
     where
