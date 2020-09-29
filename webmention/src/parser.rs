@@ -30,13 +30,13 @@ pub async fn parse<T: Parsable>(payload: T) -> ParserResponse {
     let (url, (headers, body)) = payload.into_parser_parts().await?;
 
     if let Some(found) = parse_link_headers(headers)? {
-        return Refkind::from_parts(url.clone(), &found)
+        return Refkind::from_parts(url.clone(), found)
             .map_err(|_| ParseError::InvalidValue)?
             .into_response();
     }
 
     if let Some(found) = parse_link_tags(body)? {
-        return Refkind::from_parts(url.clone(), &found)
+        return Refkind::from_parts(url.clone(), found)
             .map_err(|_| ParseError::InvalidValue)?
             .into_response();
     };
@@ -120,7 +120,7 @@ fn parse_link_header(v: String) -> Result<Option<String>> {
 
 // Evaluate HTML source for Webmention support and return the first detected
 // endpoint.
-fn parse_link_tags(value: String) -> Result<Option<&'static str>> {
+fn parse_link_tags(value: String) -> Result<Option<String>> {
     let tree = Html::parse_document(&value);
     let iselect = Selector::parse(r#"[rel*=webmention]"#).unwrap();
     let mut res: Option<&str> = None;
@@ -140,7 +140,7 @@ fn parse_link_tags(value: String) -> Result<Option<&'static str>> {
     }
 
     if let Some(res) = res {
-        return Ok(Some(res));
+        return Ok(Some(res.to_string()));
     }
 
     Ok(None)
@@ -150,13 +150,13 @@ fn parse_link_tags(value: String) -> Result<Option<&'static str>> {
 enum Refkind {
     Abs(Url),
     Rel(Uri),
-    Unknown((Url, &'static str)),
+    Unknown((Url, String)),
 }
 
 impl Refkind {
     /// Attempt to construct an instance of `RefKind` from a base URL and
     /// trailing components.
-    fn from_parts(src: Url, v: &'static str) -> Result<Self, ParseRefError> {
+    fn from_parts(src: Url, v: &str) -> Result<Self, ParseRefError> {
         if v.is_empty() {
             return Err(ParseRefError::InvalidInput);
         }
@@ -169,14 +169,14 @@ impl Refkind {
             return Ok(Self::Rel(uri));
         }
 
-        Ok(Self::Unknown((src, v)))
+        Ok(Self::Unknown((src, v.to_string())))
     }
 
     // Attempt to convert an instance of `RefKind` to `ParserResponse`.
     fn into_response(&self) -> ParserResponse {
         let val = match &self {
             Self::Abs(u) => return Ok(Some(u.clone())),
-            Self::Rel(u) => Some(u),
+            Self::Rel(u) => Some((u,())),
             Self::Unknown((src, val)) => Some((src, val)),
         };
 
